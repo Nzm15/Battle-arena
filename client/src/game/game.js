@@ -25,7 +25,6 @@ var client = new Colyseus.Client(endpoint);
 export default class Game extends Phaser.Scene {
     constructor() {
         super("Game");
-
     }
 
     init() {
@@ -35,13 +34,13 @@ export default class Game extends Phaser.Scene {
         this.players = {};
         this.player = null;
         this.bullets = {};
+        this.npcs = {}; // <-- Add this line
         this.score = 0;
         this.map;
         this.bulletSound = null;
         this.backgroundMusic = null;
 
         this.closingMessage = "You have been disconnected from the server";
-
     }
 
     preload() {
@@ -119,7 +118,16 @@ export default class Game extends Phaser.Scene {
                         player_sprite.target_y = state.players[id].y;
                         player_sprite.target_rotation = (state.players[id].rotation || 0);
                     }
+                }
 
+                // --- Add this block to ensure NPCs are added on initial state ---
+                for (let id in state.npcs) {
+                    self.addNPC({
+                        id: id,
+                        x: state.npcs[id].x,
+                        y: state.npcs[id].y,
+                        rotation: state.npcs[id].rotation || 0
+                    });
                 }
             });
 
@@ -158,20 +166,40 @@ export default class Game extends Phaser.Scene {
 
             }
 
+            this.room.state.npcs.onAdd = (npc, npcId) => {
+                self.addNPC({
+                    id: npcId,
+                    x: npc.x,
+                    y: npc.y,
+                    rotation: npc.rotation || 0
+                });
+                // Listen for changes to NPC position/rotation if needed in the future
+                npc.onChange = function (changes) {
+                    changes.forEach(change => {
+                        if (change.field == "x") {
+                            self.npcs[npcId].sprite.target_x = change.value;
+                        } else if (change.field == "y") {
+                            self.npcs[npcId].sprite.target_y = change.value;
+                        } else if (change.field == "rotation") {
+                            self.npcs[npcId].sprite.target_rotation = change.value;
+                        }
+                    });
+                };
+            };
             this.room.state.bullets.onRemove = function (bullet, sessionId) {
                 self.removeBullet(bullet.index);
             }
-
-
-
             this.room.state.players.onRemove = function (player, sessionId) {
                 //if the player removed (maybe killed) is not this player
                 if (sessionId !== self.room.sessionId) {
                     self.removePlayer(sessionId);
                 }
             }
-        });
+            this.room.state.npcs.onRemove = function (npc, npcId) {
+                self.removeNPC(npcId);
+            };
 
+        });
         this.room.onMessage.add((message) => {
             if (message.event == "start_position") {
                 let spawnPoint = this.map.findObject("player", obj => obj.name === `player${message.position}`);
@@ -294,6 +322,18 @@ export default class Game extends Phaser.Scene {
             }
         }
 
+        // --- Interpolate NPCs ---
+        for (let id in this.npcs) {
+            let npc = this.npcs[id].sprite;
+            npc.x += ((npc.target_x || npc.x) - npc.x) * 0.5;
+            npc.y += ((npc.target_y || npc.y) - npc.y) * 0.5;
+            let angle = npc.target_rotation || npc.rotation;
+            let dir = (angle - npc.rotation) / (Math.PI * 2);
+            dir -= Math.round(dir);
+            dir = dir * Math.PI * 2;
+            npc.rotation += dir;
+        }
+
     }
 
     addPlayer(data) {
@@ -329,6 +369,26 @@ export default class Game extends Phaser.Scene {
     removeBullet(index) {
         this.bullets[index].destroy();
         delete this.bullets[index];
+    }
+
+    // --- Add NPC rendering methods ---
+    addNPC(data) {
+        console.log("Adding NPC:", data); // <--- Add this line
+        let id = data.id;
+        let sprite = this.physics.add.sprite(data.x, data.y, "player").setSize(60, 80);
+        sprite.setTint(0x000000); // Black tint for NPC
+        sprite.setRotation(data.rotation);
+        sprite.target_x = data.x;
+        sprite.target_y = data.y;
+        sprite.target_rotation = data.rotation;
+        this.npcs[id] = { sprite: sprite };
+    }
+
+    removeNPC(id) {
+        if (this.npcs[id]) {
+            this.npcs[id].sprite.destroy();
+            delete this.npcs[id];
+        }
     }
 
 }
