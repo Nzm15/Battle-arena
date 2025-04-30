@@ -10,6 +10,12 @@ type("number")(Player.prototype, "x");
 type("number")(Player.prototype, "y");
 type("number")(Player.prototype, "rotation");
 
+// --- Add NPC class ---
+class NPC extends Schema {}
+type("number")(NPC.prototype, "x");
+type("number")(NPC.prototype, "y");
+type("number")(NPC.prototype, "rotation");
+
 class Bullet extends Schema {}
 type("number")(Bullet.prototype, "x");
 type("number")(Bullet.prototype, "y");
@@ -26,6 +32,8 @@ class State extends Schema {
 
         this.players = new MapSchema();
         this.bullets = new MapSchema();
+        // --- Add npcs map ---
+        this.npcs = new MapSchema();
         this.nextPosition = 0;
         this.bullet_index = 0;
     }
@@ -96,6 +104,15 @@ class State extends Schema {
         player.rotation = movement.rotation
     }
 
+    // --- Add createNPC method ---
+    createNPC(id, x, y, rotation = 0) {
+        let npc = new NPC();
+        npc.x = x;
+        npc.y = y;
+        npc.rotation = rotation;
+        this.npcs[id] = npc;
+    }
+
 }
 type({
     map: Player
@@ -103,12 +120,22 @@ type({
 type({
     map: Bullet
 })(State.prototype, "bullets");
+// --- Add npcs type ---
+type({
+    map: NPC
+})(State.prototype, "npcs");
 
 exports.outdoor = class extends colyseus.Room {
 
     onInit() {
         this.setState(new State());
         this.clock.setInterval(this.ServerGameLoop.bind(this), 16);
+
+        // Add NPC spawn on room init
+        this.state.createNPC("npc1", 400, 400, 0);
+
+        // --- Debug: Log NPCs after creation ---
+        console.log("NPCs after creation:", this.state.npcs);
     }
 
     onJoin(client, options) {
